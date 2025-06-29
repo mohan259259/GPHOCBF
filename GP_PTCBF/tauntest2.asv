@@ -1,0 +1,23 @@
+64Panda_FK
+    p = Panda_FK(q);
+    
+    % 计算位置雅可比（仅位置部分，3×7），利用 Panda_Jacobian
+    Jp = Panda_Jacobian(q);
+    
+    % 当前末端速度
+    dp = Jp * qdot;
+    
+    % 计算末端位置误差：实际末端位置 p 与目标位置 p0 的差
+    err = p - p0;
+    
+    % 末端 PD 控制：得到期望末端加速度
+    a_des = -Kp_e * err - Kd_e * dp;
+    
+    % 利用伪逆求解期望关节加速度（忽略雅可比的导数项，仅为简化处理）
+    ddq_des = pinv(Jp) * a_des;
+    
+    % 利用计算力矩公式得到名义控制器输出：
+    % tau = Panda_M(q)*ddq_des + Panda_C(q,qdot) + Panda_g(q)
+    tau = Panda_M(q) * ddq_des + Panda_C(q, qdot) + Panda_g(q);
+end
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
