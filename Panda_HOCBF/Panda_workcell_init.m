@@ -1,6 +1,8 @@
 function handles = Panda_workcell_init(vrep, id)
+
 robot_name = 'Franka';
 handles = struct('id', id);
+
 %% arm joints
 armJoints = -ones(1, 7);
 obstacle = -1;
@@ -15,6 +17,7 @@ end
 [~, tool] = vrep.simxGetObjectHandle(id, 'Tool', vrep.simx_opmode_blocking);
 handles.armJoints = armJoints;
 handles.obstacle = obstacle;
+handles.safe_region = obstacle;
 handles.robot = robot;
 handles.tool = tool;
 
@@ -29,4 +32,5 @@ end
 % vrchk(vrep, res, true);
 % Make sure that all streaming data has reached the client at least once
 vrep.simxGetPingTime(id);
+
 end
