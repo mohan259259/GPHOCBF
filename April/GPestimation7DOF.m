@@ -1,0 +1,151 @@
+function run_7dof_beta_theta
+% =============================================================
+% 7-DOF  |  β̂ & θ̂   —— 先询问名义值，再各跑原脚本，最后统一绘图
+% =============================================================
+
+%% 0) 询问名义值
+dlg = {'beta_hat_nominal  (For all joints):',...
+       'GP sigma_f_nominal:',...
+       'GP ell_nominal:'};
+ansD = inputdlg(dlg,'Nominal values',[1 50],{'1.0','0.5','-0.5'});
+if isempty(ansD),  disp('canceled');  return;  end
+beta_nominal = str2double(ansD{1});              % 标量
+theta_n      = [str2double(ansD{2}); str2double(ansD{3})];  % 2×1
+
+%% 1) β̂ 仿真
+[t_beta , beta_hist] = main_newSafety_7DOF_demo_inner(beta_nominal);
+
+%% 2) θ̂ 仿真
+[t_theta , th1_hist , th2_hist , theta_true] = thetaGP_7DOF_inner(theta_n);
+
+%% 3) 绘图：4×1 subplot
+figure('Name','Estimates','Position',[100 100 900 620]);
+
+subplot(4,1,1);
+plot(t_beta, beta_hist','LineWidth',1.15);
+ylabel('\beta_{hat}'); title('\beta_{hat}(t)  (7 joints)');
+grid on;
+
+subplot(4,1,2);
+plot(t_theta, th1_hist,'b','LineWidth',1.4); hold on;
+yline(theta_true(1),'--k');
+ylabel('GP \sigma_f est'); grid on;
+
+subplot(4,1,3);
+plot(t_theta, th2_hist,'r','LineWidth',1.4); hold on;
+yline(theta_true(2),'--k');
+ylabel('GP l est'); xlabel('Time (s)'); grid on;
+
+%% ── ④ 说明文本 ───────────────────────────
+subplot(4,1,4);   % 第 4 行
+axis off;         % 关闭坐标轴刻度
+
+% —— 最终估计值 ——
+beta_vec   = beta_hist(:, end);   % 7×1，每个关节最后时刻的 β̂
+sigma_final = th1_hist(end);      % σ_f 估计最后值
+ell_final   = th2_hist(end);      % ℓ   估计最后值
+
+% 把 β 向量转成 “[b1  b2 … b7]” 的字符串（4 位小数）
+beta_str = mat2str(beta_vec', 4);   % 转置仅用于打印成行
+
+% 生成说明文字
+txt = sprintf([ ...
+    'Use the following value as estimation:\n' ...
+    '  beta      = %s\n' ...
+    '  sigma_f   = %.4f\n' ...
+    '  ell       = %.4f'], ...
+    beta_str, sigma_final, ell_final);
+
+% 写到图上
+text(0.02, 0.55, txt, ...
+    'FontSize', 11, 'FontWeight', 'bold', ...
+    'VerticalAlignment', 'middle');
+
+text(0.02,0.55,txt,'FontSize',11,'FontWeight','bold');
+
+disp('=== Simulation finished ===');
+end
+% =====================================================================
+% ↓↓↓  以下两个 inner-function 只在第一行加输入形参，其余原封不动  ↓↓↓
+% =====================================================================
+
+function [tspan , beta_hat_hist] = main_newSafety_7DOF_demo_inner(beta_nominal)
+    %% ---------- 你的 β̂ 原脚本 ----------  (仅两处改动已标 ★)
+    n = 7;  M_mat = eye(n);  k = 0.1;  m = ones(n,1);  g = 9.8;
+    C = @(dq) k.*(dq.^2);
+    g_fun = @(q) m.*g.*sin(q);
+    d_true = @(x) sin(x(1:n)) + cos(x(n+1:2*n));
+    tspan = 0:0.01:10;  dt = tspan(2)-tspan(1);
+    x0_q  = [2.0;1.5;1.0;0.5;-1.0;-0.5;0.2];
+    x0_dq = [0;0.2;-0.1;0.3;-0.2;0.1;0];
+    gp = LocalGP_MultiOutput(14,7,500,0.1,0.5,1.5);
+    initX = [randn(n,50);randn(n,50)];
+    for ii=1:size(initX,2), gp.addPoint(initX(:,ii),d_true(initX(:,ii))); end
+    beta_hat0 = beta_nominal*ones(n,1);   % ★ 用输入名义值
+    X = [x0_q; x0_dq; beta_hat0];
+    beta_hat_hist = zeros(n,length(tspan));
+    q_d=zeros(n,1); dq_d=zeros(n,1); Kp=10*ones(n,1); Kd=5*ones(n,1);
+    for i=1:length(tspan)
+        q=X(1:n); dq=X(n+1:2*n); beta_hat=X(2*n+1:3*n);
+        beta_hat_hist(:,i)=beta_hat;
+        x_gp=[q;dq];
+        [~,sigma_vec]=gp.predict(x_gp);
+        f1=dq; f2=(d_true(x_gp)-C(dq).*dq-g_fun(q))./diag(M_mat);
+        u=-Kp.*(q-q_d)-Kd.*(dq-dq_d);
+        grad_h_L1=2*abs(q); dot_beta_hat=grad_h_L1.*sigma_vec;
+        ddq_total=f2+u./diag(M_mat);
+        X=X+dt*[f1;ddq_total;dot_beta_hat];
+        if gp.DataQuantity>=gp.MaxDataQuantity, gp.downdateParam(1); end
+        gp.addPoint(x_gp,d_true(x_gp));
+    end
+end
+
+function [tspan,th1_hist,th2_hist,theta_true] = thetaGP_7DOF_inner(theta_n)
+    %% ---------- 你的 θ̂ 原脚本 ----------  (仅两处改动已标 ★)
+    M = eye(7); k=0.1; m_mass=1; g=9.8;
+    C=@(dq) k*(dq.^2); g_func=@(q) m_mass*g*sin(q);
+    d_true=@(x) sin(x(1:7))+cos(x(8:14));
+    tspan=0:0.01:50; dt=tspan(2)-tspan(1);
+    x0=[ones(7,1);ones(7,1)];
+    theta_true=[0.5;1.5];
+    delta = theta_true - theta_n;         % ★ 用输入 theta_n
+    lambda=1; xi=1; Gamma=eye(2);
+    gp=LocalGP_MultiOutput(14,7,100,0.1,0.5,1.5);
+    m=length(theta_n); P_f=zeros(7,7+m); b_f=zeros(7,1);
+    Q=zeros(2); r=zeros(2,1); delta_hat=zeros(2,1);
+    x=x0; th1_hist=zeros(size(tspan)); th2_hist=zeros(size(tspan));
+    for i=1:length(tspan)
+        q=x(1:7); dq=x(8:14); cur=[q;dq];
+        if gp.DataQuantity>=gp.MaxDataQuantity, gp.downdateParam(1); end
+        gp.addPoint(cur,d_true(cur));
+        [mu,~,~,~,~,~,~]=gp.predict(cur);
+        sf0=gp.SigmaF; l0=gp.SigmaL;
+        gp.SigmaF=theta_n(1); gp.SigmaL=theta_n(2);  % ★
+        [mu_n,~]=gp.predict(cur);
+        gp.SigmaF=sf0; gp.SigmaL=l0;
+        eps=1e-6;
+        gp_l=gp; gp_l.SigmaL=gp.SigmaL+eps;
+        dmu_dL=(gp_l.predict(cur)-mu)/eps;
+        gp_f=gp; gp_f.SigmaF=gp.SigmaF+eps;
+        dmu_dF=(gp_f.predict(cur)-mu)/eps;
+        P_mu=[dmu_dF,dmu_dL];
+        f_x=M\(mu-C(dq).*dq-g_func(q));
+        P_f_dot=(-P_f+lambda*[P_mu,ones(7,7)])/lambda;
+        b_f_dot=(-b_f+lambda*(f_x)+dq)/lambda;
+        P_f=P_f+P_f_dot*dt; b_f=b_f+ b_f_dot*dt;
+        P_delta=P_f(:,1:m);
+        Q=Q+(-xi*Q+P_delta'*P_delta)*dt;
+        r=r+(-xi*r+P_delta'*(dq-b_f))*dt;
+        delta_hat=delta_hat+(-Gamma*(Q*delta_hat-r))*dt;
+        th1_hist(i)=theta_n(1)+delta_hat(1);
+        th2_hist(i)=theta_n(2)+delta_hat(2);
+        [~,x_ode]=ode45(@(tt,xx) sysDyn(tt,xx,d_true,M,C,g_func), [0 dt], x);
+        x=x_ode(end,:)';
+    end
+end
+
+function dxdt = sysDyn(~, x, d_true, M, C, g_func)
+    q=x(1:7); dq=x(8:14);
+    ddq=M\( - (C(dq).*dq) - g_func(q) + d_true(x) ) + 0.001*randn(7,1);
+    dxdt=[dq;ddq];
+end
