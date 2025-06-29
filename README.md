@@ -1,7 +1,13 @@
-# GPHOCBF
-MA code
-The size of code is too big that can not upload the file to the github.
+# ROS integration for Franka Emika research robots
+
+[![CI](https://github.com/frankaemika/franka_ros/actions/workflows/ci.yml/badge.svg)](https://github.com/frankaemika/franka_ros/actions/workflows/ci.yml)
 
 
-Matlab Code can be downloaded from [Google Drive]: https://drive.google.com/file/d/1-3CY7hb5iKzgc36H1nfiS8qswTTH9dOV/view?usp=drive_link
-ROS C++ Code can be downloaded from [Google Drive]: https://drive.google.com/file/d/1esUdp5m67z42ocQhFQAWYRoQV0LJkFNb/view?usp=drive_link
+See the [Franka Control Interface (FCI) documentation][fci-docs] for more information.
+
+## License
+
+All packages of `franka_ros` are licensed under the [Apache 2.0 license][apache-2.0].
+
+[apache-2.0]: https://www.apache.org/licenses/LICENSE-2.0.html
+[fci-docs]: https://frankaemika.github.io/docs
