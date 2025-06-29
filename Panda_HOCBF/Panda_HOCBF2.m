@@ -2,14 +2,18 @@ clear;
 clc;
 addpath(genpath('..\'));
 
-%% connect to vrep
+%% connect to vrep，清除环境、清屏、添加路径，并连接到 V-REP（CoppeliaSim）远程 API 服务器。
 disp('Program started');
 vrep = remApi('remoteApi'); % using the prototype file (remoteApiProto.m)
 vrep.simxFinish(-1);      % just in case, close all opened connections
 id = vrep.simxStart('127.0.0.1', 19997, true, true, 5000, 5); % connect to vrep server
 if (id > -1)
     disp('Connected to remote API server');
-    %%  simulaiton parameters setting
+
+
+
+
+    %%  simulaiton parameters setting设置仿真步长、同步模式，并启动仿真。
     % simulation period
     dt = 4e-3;
     vrep.simxSetFloatingParameter(id, vrep.sim_floatparam_simulation_time_step, ...
@@ -17,8 +21,11 @@ if (id > -1)
     vrep.simxSynchronous(id, true);
     % start the simulation
     vrep.simxStartSimulation(id, vrep.simx_opmode_blocking);
+
+
+
     
-    %%  initialization
+    %%  initialization定义机器人各连杆参数、运动学和动力学参数，初始化工作空间及关节句柄，并设定初始关节角度与速度。
     l1 = 0.333;
     l2 = 0.316;
     l3 = 0.384;
@@ -39,11 +46,15 @@ if (id > -1)
     q = zeros(7, 1);
     qdot = zeros(7, 1);
 
-    %% obstacle
+
+
+    %% obstacle定义障碍物的位置和半径。
     r = 0.03;
     p0 = [0.53; 0; 0.2];
     
-    %% precomputed trajectory
+    
+    
+    %% precomputed trajectory通过预定义动作段（action0、action1、action2），生成机器人关节空间和笛卡尔空间的期望轨迹。
     action0.qstart = [0; 0; 0; -90; 0; 90; 45] * pi / 180;
     action0.qend = [0; -40; 0; -130; 0; 90; 45] * pi / 180;
     q7 = action0.qend(7);
@@ -124,7 +135,7 @@ if (id > -1)
         qddotDesired(i + 1, :) = (qdotDesired(i + 1, :) - qdotDesired(i, :)) / dt;
     end
 
-    %% CBF parameters
+    %% CBF parameters配置基于控制障碍函数（CBF）的参数和 PD 控制器的增益参数，以及定义加速度上下界。
     CBF_switch = 1;
     alpha1 = 5;
     alpha2 = 30;
@@ -135,8 +146,13 @@ if (id > -1)
     weights = diag([1, 1, 1, 1, 1, 1, 1]);
     Kp = 30 * weights;
     Kd = 15 * weights;
+
+
+
+
+
     
-    %% computed torque control
+    %% computed torque control在循环中获取实际关节状态，计算误差，并结合 CBF 或传统 computed torque 控制计算关节加速度和力矩，最后通过二次规划调整加速度
     i = 1;
     while vrep.simxGetConnectionId(id) ~= -1
         if i > N
@@ -211,7 +227,12 @@ if (id > -1)
         vrep.simxGetPingTime(id);
         i = i + 1;
     end
-    CBFsuccess = tabulate(exitflag);
+    
+    
+    
+    
+    
+    CBFsuccess = tabulate(exitflag);%统计 CBF 的退出情况，停止仿真，关闭连接，并释放 API 资源。
     % Now close the connection to vrep
     vrep.simxStopSimulation(id, vrep.simx_opmode_blocking);
     vrep.simxFinish(id);

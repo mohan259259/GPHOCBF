@@ -28,11 +28,12 @@ if (id > -1)
     g = [0; 0; -9.81];
     vrep.simxSynchronousTrigger(id);
     handles = Panda_workcell_init(vrep, id);
-    joint_handles = handles.armJoints; 
+    joint_handles = handles.armJoints;
+    obstacle_handles = handles.obstacle;
     tool_handles = handles.tool;
-    safe_region_handles = handles.safe_region;
-
-    %% Get Start State
+    safe_region_handles = handles.safe_region;    
+    
+     %% Get Start State
     q = zeros(7, 1);
     qdot = zeros(7, 1);
     for j = 1:7
@@ -44,42 +45,44 @@ if (id > -1)
 
     %% safe region
     r = 0.12;
-    [~, pos] = vrep.simxGetObjectPosition(id, safe_region_handles, -1, vrep.simx_opmode_blocking);
+    [~, pos] = vrep.simxGetObjectPosition(id, safe_region_handles, -1, vrep.simx_opmode_oneshot);
     p0 = double(pos.');
 
-    %% control parameters    
+    %% control parameters
     N = 50;
-    qDesired = repmat(q_start', N, 1);  
-    % qdotDesired = diff([qDesired; qDesired(end,:)]) / dt;
-    % qddotDesired = diff([qdotDesired; qdotDesired(end,:)]) / dt;
-    % qdotDesired = repmat(zeros(7,1).', N, 1);
-    % qddotDesired = repmat(zeros(7,1).', N, 1);
-    for i = 1: N - 1
-        qdotDesired(i + 1, :) = wrapToPi(qDesired(i + 1, :) - qDesired(i, :)) / dt;
-        qddotDesired(i + 1, :) = (qdotDesired(i + 1, :) - qdotDesired(i, :)) / dt;
-    end
-    weights = diag(ones(1,7));
-    Kp = 30 * weights;  Kd = 10 * weights;
-    % GetTarget;
-
-    %% CBF parameters
-    CBF_switch = false;
-    alpha1 = 3;
-    alpha2 = 5;
-    ub = ones(7,1) * 80;
-    lb = -ub;
-    T_pre = 8.0;       % 规定安全时间
-    t0_val = 0;        % 仿真开始时刻
-    c_gain = 8;
-    phi = @(t) (T_pre^2 + c_gain*((t - t0_val)^2 - (t - t0_val)*T_pre)^2) / ((T_pre + t0_val - t)^2);
-   
-    %% sim parameters
+    qDesired = repmat(q_start', N, 1);     
+    h1 = zeros(N, 1);
+    h_bar = zeros(N, 1);
+    phi1 = zeros(N, 1);
+    exitflag = ones(N, 1) * 0.9;
+    qdotDesired = zeros(N, 7);
+    qddotDesired = zeros(N, 7);
     q_sim = zeros(N, 7);
     qdot_sim = zeros(N, 7);
     e_sim = zeros(N, 7);
     tau_sim = zeros(N, 7);
-    exitflag = ones(N, 1) * 0.9;
-    
+
+    for i = 1: N - 1
+        qdotDesired(i + 1, :) = wrapToPi(qDesired(i + 1, :) - qDesired(i, :)) / dt;
+        qddotDesired(i + 1, :) = (qdotDesired(i + 1, :) - qdotDesired(i, :)) / dt;
+    end
+
+    weights = diag([1, 1, 1, 1, 1, 1, 1]);
+    Kp = 0 * weights;
+    Kd = 0 * weights;
+
+    %% CBF parameters
+    CBF_switch = true;    
+    ub = ones(7,1) * 80;
+    lb = -ub;
+    alpha1 = 2;
+    alpha2 = 4;
+    T_pre = 8.0;       % 规定安全时间
+    t0_val = 0;        % 仿真开始时刻
+    c_gain = 8;
+    phi = @(t) (T_pre^2 + c_gain*((t - t0_val)^2 - (t - t0_val)*T_pre)^2) / ((T_pre + t0_val - t)^2);
+    phi_dot = @(t) (c_gain*(4*(t-t0_val)^3+2*T_pre^2*(t0_val)^2-6*(t-t0_val)^2*T_pre)*(T_pre+t0_val-t)^(-2) ...
+                    + (T_pre^2 + c_gain*((t - t0_val)^2 - (t - t0_val)*T_pre)^2) / ((T_pre + t0_val - t)^2)*2*(T_pre+t0_val-t)^(-3));
     %% computed torque control
     i = 1; 
     i_ptsf = 1;
@@ -94,76 +97,54 @@ if (id > -1)
             [res, q(j)] = vrep.simxGetJointPosition(id, joint_handles(j), ...
                 vrep.simx_opmode_buffer);
             [res, qdot(j)] = vrep.simxGetObjectFloatParameter(id, ...
-                joint_handles(j), 2012, vrep.simx_opmode_buffer);            
+                joint_handles(j), 2012, vrep.simx_opmode_buffer);
         end        
-        if i == 1
-            for j = 1:7
-                qddot(j) = (qdot(j) - 0) ./ dt;
-            end
-        else
-            for j = 1:7
-                qddot(j) = (qdot(j) - qdot_(j)) ./ dt;
-            end
-        end
-        qdot_ = qdot;
         e = wrapToPi(transpose(qDesired(i, :)) - q);
-        edot = transpose(qdotDesired(i, :)) - qdot;         
-        qddotNorm = qddotDesired(i, :).';
+        edot = transpose(qdotDesired(i, :)) - qdot;
+        q_sim(i, :) = transpose(q) * 180 / pi;
+        qdot_sim(i, :) = transpose(qdot) * 180 / pi;
+        e_sim(i, :) = transpose(e) * 180 / pi;
         M_matrix = MassMatrix(q, Mlist, Glist, Slist);
-        nonlinear = InverseDynamics(q, qdot, qddot, g, ...
+        nonlinear = InverseDynamics(q, qdot, transpose(qddotDesired(i, :)), g, ...
                     zeros(6, 1), Mlist, Glist, Slist);
         if CBF_switch
-            % 给定关节角度、角速度、urdf，求雅可比矩阵、非线性加速度项和末端的位置与速度            
+            % 给定关节角度、角速度、urdf，求雅可比矩阵、非线性加速度项和末端的位置与速度
             [~, pdot1, A1, B1] = Panda_p_related(q, qdot, l1, l2, l3, d1, d2, lee);
             [~, pos1] = vrep.simxGetObjectPosition(id, tool_handles, -1, vrep.simx_opmode_blocking);
             p1 = double(pos1.');
-            h0(i) = .8*r - norm(p1 - p0);
-            % p1_recod(:,i) = p1;            
-            if h0(i) <= 0                
+            % p1 = round(p1, 2);
+            h0 = 1*r^2 - norm(p1 - p0)^2;
+            % p1_recod(:,i) = p1;
+            % qddotNorm = transpose(qddotDesired(i, :)) + Kp * e + Kd * edot;
+            if h0 <= 0
                 % quadprog
                 t_current_ptsf = (i_ptsf-1) * dt;
-                alpha1_t = alpha1 * phi(t_current_ptsf);
-                alpha2_t = alpha2 * phi(t_current_ptsf);
                 % 求约束相关参数
-                h1(i) = (1*r)^2 - norm(p1 - p0)^2;                
-                % h1_ddot = 
+                h1(i) = 1*r^2 - norm(p1 - p0)^2;
                 C1 = -2 * (p1 - p0).'; % g(x)
                 h1_dot = C1 * pdot1;
-                h2 = h1_dot + alpha1_t * h1(i);
-                phi1(i) = C1 * pdot1 + alpha1_t * h1(i); %h2
-                % D1 = norm(pdot1)^2 + (alpha1_t + alpha2_t)/2 * phi1(i) ...
-                    % - alpha1_t^2/2 * h1(i); % f(x)
-                D1 = -2 * pdot1.' * ((alpha1 + alpha2)*phi(t_current_ptsf) * (p1 - p0)) ...
-                     - alpha1*alpha2*phi(t_current_ptsf)^2*h1(i); % f(x)
-                % D1 = -2 * pdot1 * ((alpha1 + alpha2)*phi(t_current_ptsf) * (p1 - p0).') ...
-                     % - alpha1*alpha2*phi(t_current_ptsf)^2*h1(i); % f(x)
-                % A1 = jaco
-                a = C1 * A1 / M_matrix;
+                h2 = h1_dot + alpha1* phi(t_current_ptsf) * h1(i);
+                D1 = -2*pdot1.'*pdot1 + alpha1*phi_dot(t_current_ptsf)*h1(i) + ...
+                     (alpha1+alpha2)*phi(t_current_ptsf)*h1_dot + ...
+                     alpha1*alpha2*phi(t_current_ptsf)^2*h1(i);
+                a = -C1 * A1 / M_matrix;
                 b = C1 * B1 + D1 ...
-                    - C1*A1 / M_matrix * nonlinear;
-                % b = inv(M_matrix) * 0 ...
-                    % - C1*B1*qdot ...
-                    % - D1;
-                % b = 0 ...
-                    % - C1*A1 / M_matrix * qdot ...
-                    % - D1;
+                    - C1*A1 / M_matrix * nonlinear;    
                 % **求解优化问题**
-                H = 2 * eye(7);                                
-                % f = -2 * ((M_matrix * qddotNorm + nonlinear));
-                [tau, fval, exitflag(i)] = quadprog(H, [], a, b, [], [], lb, ub);
+                H = 2 * eye(7);               
+                f = zeros(7, 1);
+                [tau, fval, exitflag(i)] = quadprog(H, f, a, b, [], [], lb, ub);
                 i_ptsf = i_ptsf + 1;
             else
-                tau = M_matrix * qddotNorm + nonlinear;
-                % tau = zeros(7,1);
+                % tau = M_matrix * qddotNorm + nonlinear;
+                tau = nonlinear;
             end
-            % tau = M_matrix * qddotNorm + nonlinear;
-        else            
-            tau = M_matrix * (Kp * e + Kd * edot) + nonlinear;
+            
+        else
+            tau = MassMatrix(q, Mlist, Glist, Slist) ...
+                * (Kp * e + Kd * edot) + nonlinear;
         end
         tau = Panda_maxtorque(tau);
-        q_sim(i, :) = transpose(q) * 180 / pi;
-        qdot_sim(i, :) = transpose(qdot) * 180 / pi;
-        % e_sim(i, :) = transpose(e) * 180 / pi;
         tau_sim(i, :) = transpose(tau);
 
         % Send torque to vrep        

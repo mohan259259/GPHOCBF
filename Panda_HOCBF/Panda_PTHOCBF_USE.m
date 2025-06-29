@@ -1,6 +1,6 @@
 clear;
 clc;
-addpath(genpath('..\'));
+% addpath(genpath('..\'));
 
 %% connect to vrep
 disp('Program started');
@@ -134,8 +134,8 @@ if (id > -1)
 
     %% CBF parameters
     CBF_switch = 1;
-    alpha1 = 2;
-    alpha2 = 4;
+    alpha1 = 3;
+    alpha2 = 5;
     ub = [1; 1; 1; 1; 1; 1; 1] * 80;
     lb = -ub;
     T_pre = 8.0;       % 规定安全时间
@@ -175,7 +175,7 @@ if (id > -1)
             % 给定关节角度、角速度、urdf，求雅可比矩阵、非线性加速度项和末端的位置与速度
             [~, pdot1, A1, B1] = Panda_p_related(q, qdot, l1, l2, l3, d1, d2, lee);
             [~, pos1] = vrep.simxGetObjectPosition(id, tool_handles, robot_handles, vrep.simx_opmode_oneshot);
-            % pause(0.04)
+            pause(0.04)
             [~, pos1] = vrep.simxGetObjectPosition(id, tool_handles, robot_handles, vrep.simx_opmode_buffer);
             p1 = double(pos1.');
             p1 = round(p1, 2);

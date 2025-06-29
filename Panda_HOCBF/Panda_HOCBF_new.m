@@ -1,6 +1,6 @@
 clear;
 clc;
-addpath(genpath('..\'));
+% addpath(genpath('..\'));
 
 %% connect to vrep
 disp('Program started');
@@ -179,14 +179,14 @@ if (id > -1)
 
                 % 求约束相关参数
                 h1(i) = norm(p1 - p0)^2 - (3*r)^2;
-                C1 = transpose(p1 - p0);
+                C1 = transpose(p1 - p0); % g(x)
                 alpha1_t = alpha1 * phi(t_current_ptsf);
                 alpha2_t = alpha2 * phi(t_current_ptsf);
                 % alpha1_t = alpha1;
                 % alpha2_t = alpha2;
                 phi1(i) = 2 * C1 * pdot1 + alpha1_t * h1(i);
                 D1 = norm(pdot1)^2 + (alpha1_t + alpha2_t)/2 * phi1(i) ...
-                    - alpha1_t^2/2 * h1(i);
+                    - alpha1_t^2/2 * h1(i); % f(x)
                 
                 a = -C1 * A1 / M_matrix;
                 b = C1 * B1 + D1 ...

@@ -11,7 +11,7 @@ if (id > -1)
     disp('Connected to remote API server');
     %%  simulaiton parameters setting
     % simulation period
-    dt = 4e-2;
+    dt = 4e-3;
     vrep.simxSetFloatingParameter(id, vrep.sim_floatparam_simulation_time_step, ...
         dt, vrep.simx_opmode_blocking);
     vrep.simxSynchronous(id, true);
@@ -167,7 +167,7 @@ if (id > -1)
                 f = -2 * qddotNorm;
                 D1 = norm(pdot1)^2 + (alpha1 + alpha2)/2 * phi1(i) - alpha1^2/2 * h1(i);
                 a = -C1 * A1;
-                b = (C1 * B1 + D1);
+                b = C1 * B1 + D1;
                 [qddotSafe, fval, exitflag(i)] = quadprog(H, f, a, b, [], [], lb, ub);
             else
                 qddotSafe = qddotNorm;
@@ -208,7 +208,6 @@ else
     disp('Failed connecting to remote API server');
 end
 vrep.delete(); % call the destructor!
-%%
 figure(1)
 plot(1:N,tau_sim(:,1),'r',1:N,tau_sim(:,2),'g',1:N,tau_sim(:,3),'b',1:N,tau_sim(:,4),'y',...
     1:N,tau_sim(:,5),'b',1:N,tau_sim(:,6),'c',1:N,tau_sim(:,7),'m',1:N,-40*ones(1,N),'--k','linewidth',1.5);
