@@ -1,0 +1,11 @@
+<launch>
+  <!-- 加载 URDF 到参数服务器 -->
+  <param name="robot_description" textfile="$(find franka_description)/robots/panda/panda.urdf" />
+
+  <!-- 启动 Gazebo -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+  </include>
+
+  <!-- 在 Gazebo 中生成机器人模型 -->
+  <node name="spawn_model" pkg="gazebo_ros" type="spawn_model" args="-urdf -model panda -param robot_description" output="screen"/>
+</launch>

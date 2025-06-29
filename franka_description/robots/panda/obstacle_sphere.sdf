@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <model name="obstacle_sphere">
+    <static>true</static> <!-- 设为静态物体 -->
+    <link name="link">
+      <pose>0 0 0 0 0 0</pose> <!-- 相对模型坐标系的位姿 -->
+      <collision name="collision">
+        <geometry>
+          <sphere><radius>0.01</radius></sphere>
+        </geometry>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <!-- <sphere><radius>0.03</radius></sphere> -->
+          <sphere><radius>0.09</radius></sphere>
+        </geometry>
+        <material>
+          <ambient>1 0 0 1</ambient> <!-- 红色材质 -->
+          <diffuse>1 0 0 0.3</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>
